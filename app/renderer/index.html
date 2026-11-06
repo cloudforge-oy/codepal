@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- Monaco injects <style> elements and runs its language services in workers. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self';" />
+  <title>CodePal</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="dist/index.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header id="topbar">
+    <div class="topbar-left">
+      <span class="logo-badge" aria-hidden="true">
+        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M52 34c6 0 10-4 10-10s-4-10-10-10c0-8-6-14-14-14-6 0-11 3.5-13 8.5C23.5 7 21.5 6 19 6c-5 0-9 4-9 9-.5 0-1-.05-1.5 0C3.5 15.5 0 19.5 0 24.5 0 30 4 34 9 34h43z" fill="rgba(255,255,255,.95)"/>
+          <text x="14" y="30" font-family="monospace" font-weight="bold" font-size="16" fill="#4338ca">&gt;_</text>
+          <text x="38" y="26" font-family="system-ui,sans-serif" font-weight="bold" font-size="14" fill="#7c3aed">1</text>
+        </svg>
+      </span>
+      <span class="app-title wordmark">CODEPAL</span>
+      <button id="workspace-chip" class="chip" title="Open folder…">~</button>
+    </div>
+    <div class="topbar-right">
+      <button id="toggle-explorer" class="icon-btn" title="Toggle explorer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>
+        </svg>
+      </button>
+      <button id="toggle-chat" class="icon-btn" title="Toggle chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>
+        </svg>
+      </button>
+      <button id="account-btn" class="icon-btn" title="API key / connection">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 8.1-8.1"/>
+          <path d="m17 4 3 3"/><path d="m14 7 3 3"/>
+        </svg>
+      </button>
+      <button id="theme-toggle" class="icon-btn" title="Toggle light/dark theme">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/>
+          <path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/>
+          <path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
+        </svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div id="token-banner" class="banner hidden" title="Click to connect"></div>
+
+  <div id="workbench">
+    <!-- ───────────── explorer ───────────── -->
+    <aside id="explorer" class="pane">
+      <div class="pane-header">
+        <span class="pane-title" id="explorer-title">Explorer</span>
+        <span class="pane-actions">
+          <button id="new-file" class="icon-btn sm" title="New file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+              <path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 18v-6"/>
+            </svg>
+          </button>
+          <button id="refresh-tree" class="icon-btn sm" title="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>
+            </svg>
+          </button>
+        </span>
+      </div>
+      <div id="tree" role="tree" tabindex="0"></div>
+    </aside>
+    <div class="sash" id="sash-explorer" role="separator" aria-orientation="vertical"></div>
+
+    <!-- ───────────── editor ───────────── -->
+    <section id="editor-area">
+      <div id="tabs" role="tablist"></div>
+      <div id="editor-notice" class="notice hidden">
+        <span id="editor-notice-text"></span>
+        <span class="notice-actions">
+          <button id="notice-reload" class="chip">Reload from disk</button>
+          <button id="notice-keep" class="chip">Keep mine</button>
+        </span>
+      </div>
+      <div id="editor-host"></div>
+      <div id="editor-empty">
+        <span class="logo-badge xl" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M52 34c6 0 10-4 10-10s-4-10-10-10c0-8-6-14-14-14-6 0-11 3.5-13 8.5C23.5 7 21.5 6 19 6c-5 0-9 4-9 9-.5 0-1-.05-1.5 0C3.5 15.5 0 19.5 0 24.5 0 30 4 34 9 34h43z" fill="rgba(255,255,255,.95)"/>
+            <text x="14" y="30" font-family="monospace" font-weight="bold" font-size="16" fill="#4338ca">&gt;_</text>
+            <text x="38" y="26" font-family="system-ui,sans-serif" font-weight="bold" font-size="14" fill="#7c3aed">1</text>
+          </svg>
+        </span>
+        <div class="empty-title wordmark">CODEPAL</div>
+        <div class="empty-hint">Open a file from the explorer, or ask CodePal to build something.</div>
+        <div class="shortcuts">
+          <span><kbd>Ctrl</kbd> <kbd>S</kbd> save</span>
+          <span><kbd>Ctrl</kbd> <kbd>L</kbd> ask about the selection</span>
+          <span><kbd>Ctrl</kbd> <kbd>W</kbd> close tab</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="sash" id="sash-chat" role="separator" aria-orientation="vertical"></div>
+    <!-- ───────────── chat ───────────── -->
+    <aside id="chat-panel" class="pane">
+      <div class="pane-header">
+        <span class="pane-title">Chat <span class="pane-sub">pi agent</span></span>
+        <span class="pane-actions">
+          <button id="new-session" class="icon-btn sm" title="New conversation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14"/><path d="M12 5v14"/>
+            </svg>
+          </button>
+        </span>
+      </div>
+      <main id="chat">
+        <div id="chat-empty">
+          <div class="empty-hint">Agent sessions via cloudcode.one</div>
+          <div class="empty-cwd" id="empty-cwd"></div>
+        </div>
+      </main>
+      <footer id="composer-area">
+        <div id="status-row" class="hidden">
+          <span class="spinner"></span>
+          <span id="status-text">Working&hellip;</span>
+          <span id="queue-text" class="hidden"></span>
+          <button id="stop-btn" class="chip danger">Stop</button>
+        </div>
+        <div id="composer">
+          <div id="attachments" class="hidden"></div>
+          <div id="context-row" class="hidden">
+            <button id="context-chip" class="context-chip" title="Send the open file (and selection) with your message — click to toggle">
+              <span class="ctx-icon" aria-hidden="true">&lt;/&gt;</span>
+              <span id="context-label"></span>
+            </button>
+          </div>
+          <textarea id="prompt-input" rows="1" aria-label="Message"
+                    placeholder="Ask CodePal to do something&hellip;"></textarea>
+          <div class="composer-bottom">
+            <input id="image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp"
+                   multiple class="hidden" aria-label="Image files" />
+            <button id="attach-btn" class="icon-btn" title="Attach images">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                <circle cx="9" cy="9" r="2"/>
+                <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+              </svg>
+            </button>
+            <select id="model-select" title="Model" aria-label="Model"></select>
+            <span class="composer-spacer"></span>
+            <span class="composer-hint" id="composer-hint">&#9166; send &middot; shift+&#9166; newline</span>
+            <button id="send-btn" title="Send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </footer>
+    </aside>
+  </div>
+
+  <footer id="statusbar">
+    <span id="sb-workspace" class="sb-item"></span>
+    <span class="sb-spacer"></span>
+    <span id="sb-usage" class="sb-item"></span>
+    <span id="sb-cursor" class="sb-item"></span>
+    <span id="sb-language" class="sb-item"></span>
+  </footer>
+
+  <div id="token-overlay" class="overlay hidden">
+    <div class="token-card">
+      <div class="token-title">
+        <span class="logo-badge" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M52 34c6 0 10-4 10-10s-4-10-10-10c0-8-6-14-14-14-6 0-11 3.5-13 8.5C23.5 7 21.5 6 19 6c-5 0-9 4-9 9-.5 0-1-.05-1.5 0C3.5 15.5 0 19.5 0 24.5 0 30 4 34 9 34h43z" fill="rgba(255,255,255,.95)"/>
+            <text x="14" y="30" font-family="monospace" font-weight="bold" font-size="16" fill="#4338ca">&gt;_</text>
+            <text x="38" y="26" font-family="system-ui,sans-serif" font-weight="bold" font-size="14" fill="#7c3aed">1</text>
+          </svg>
+        </span>
+        <span class="wordmark">Connect to CLOUDCODE<span class="brand-accent">.ONE</span></span>
+      </div>
+      <p class="token-text" id="token-text"></p>
+      <button id="portal-connect" class="primary connect-btn">Connect with cloudcode.one</button>
+      <button id="token-forget" class="hidden">Forget stored key</button>
+      <div id="portal-status" class="portal-status hidden">
+        <span class="spinner"></span>
+        <span>Waiting for approval in your browser&hellip;</span>
+        <button id="portal-cancel" class="link-btn">Cancel</button>
+      </div>
+      <div id="portal-error" class="portal-error hidden"></div>
+      <button id="portal-dashboard" class="hidden">Open dashboard</button>
+      <div class="token-divider"><span>or paste a token manually</span></div>
+      <input id="token-input" type="password" placeholder="sk-..." spellcheck="false"
+             aria-label="cloudcode.one gateway token" />
+      <div class="token-actions">
+        <button id="token-save">Save</button>
+        <button id="token-skip">Not now</button>
+      </div>
+      <div class="token-note">Keys fetched from the portal are stored encrypted via your OS keychain.
+        Pasted tokens are kept in memory for this run only &mdash; never written to disk.</div>
+    </div>
+  </div>
+
+  <script type="module" src="dist/index.js"></script>
+</body>
+</html>

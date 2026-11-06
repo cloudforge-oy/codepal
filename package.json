@@ -1,0 +1,93 @@
+{
+  "name": "codepal",
+  "productName": "CodePal",
+  "version": "0.1.0",
+  "description": "Coding agent desktop app: the pi agent (pi.dev) with a Monaco editor, talking to the cloudcode.one gateway.",
+  "author": "CloudForge Oy <hello@cloudcode.one>",
+  "homepage": "https://cloudcode.one",
+  "type": "module",
+  "main": "app/main.mjs",
+  "desktopName": "codepal.desktop",
+  "scripts": {
+    "prestart": "npm run build:renderer",
+    "start": "electron .",
+    "smoke": "tsx codepal-smoke.ts",
+    "build:agent": "node scripts/build-agent.mjs",
+    "build:renderer": "node scripts/build-renderer.mjs",
+    "build": "npm run build:agent && npm run build:renderer",
+    "dist": "npm run build && electron-builder",
+    "dist:linux": "npm run build && electron-builder --linux deb",
+    "dist:win": "npm run build && electron-builder --win zip && node scripts/build-win-installer.mjs",
+    "dist:mac": "npm run build && electron-builder --mac dir --x64 --arm64 && node scripts/build-mac-dmg.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.0"
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "0.28.1",
+    "monaco-editor": "0.57.0",
+    "tsx": "^4.22.4"
+  },
+  "build": {
+    "appId": "one.cloudcode.codepal",
+    "productName": "CodePal",
+    "copyright": "Copyright © 2026 CloudForge Oy",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "app/**/*",
+      "!app/renderer/src/**",
+      "codepal-agent.js",
+      "package.json",
+      "!**/*.map",
+      "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+      "!node_modules/@openai/codex-*/**"
+    ],
+    "asar": false,
+    "linux": {
+      "target": [
+        "deb"
+      ],
+      "category": "Development",
+      "maintainer": "CloudForge Oy <hello@cloudcode.one>",
+      "synopsis": "Coding agent with a Monaco editor for cloudcode.one",
+      "description": "Desktop coding agent: pi agent sessions against the cloudcode.one gateway, with a file explorer and the Monaco (VS Code) editor.",
+      "icon": "build/icons",
+      "syncDesktopName": true
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libsecret-1-0"
+      ]
+    },
+    "win": {
+      "target": [
+        "zip"
+      ],
+      "icon": "build/icon.png"
+    },
+    "mac": {
+      "target": [
+        "dir"
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "darkModeSupport": true
+    }
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}

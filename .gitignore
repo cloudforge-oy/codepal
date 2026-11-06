@@ -1,0 +1,4 @@
+node_modules
+dist
+codepal-agent.js
+app/renderer/dist
