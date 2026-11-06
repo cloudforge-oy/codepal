@@ -22,6 +22,24 @@ const monaco = (p) => path.join(root, "node_modules", "monaco-editor", "esm", "v
 
 fs.rmSync(outdir, { recursive: true, force: true });
 
+// Monaco vendors DOMPurify as esm/vs/base/browser/dompurify/dompurify.js, a verbatim copy
+// of the npm package's purify.es.mjs at whatever version Monaco pinned (0.57.0: 3.4.15,
+// critical DOM XSS advisories). An npm override only patches node_modules/dompurify, not
+// that copy, so point Monaco's import at the package instead (pinned in package.json).
+const vendoredDompurify = /[\\/]dompurify[\\/]dompurify\.js$/;
+const useNpmDompurify = {
+  name: "use-npm-dompurify",
+  setup(b) {
+    b.onResolve({ filter: /dompurify\.js$/ }, async (args) => {
+      const target = path.resolve(args.resolveDir, args.path);
+      if (!vendoredDompurify.test(target) || !target.includes(`${path.sep}monaco-editor${path.sep}`)) return;
+      const pkg = await b.resolve("dompurify", { kind: "import-statement", resolveDir: root });
+      if (pkg.errors.length) return { errors: pkg.errors };
+      return { path: pkg.path };
+    });
+  },
+};
+
 const common = {
   bundle: true,
   minify: !watch,
@@ -29,6 +47,7 @@ const common = {
   target: "chrome140",
   logLevel: "info",
   legalComments: "none",
+  plugins: [useNpmDompurify],
 };
 
 const ui = {

@@ -24,11 +24,15 @@
     "@earendil-works/pi-coding-agent": "1.5.0"
   },
   "devDependencies": {
+    "dompurify": "3.4.17",
     "electron": "^43.0.0",
     "electron-builder": "^26.15.3",
     "esbuild": "0.28.1",
     "monaco-editor": "0.57.0",
     "tsx": "^4.22.4"
+  },
+  "overrides": {
+    "dompurify": "$dompurify"
   },
   "build": {
     "appId": "one.cloudcode.codepal",
@@ -88,6 +92,9 @@
     }
   },
   "allowScripts": {
-    "esbuild@0.28.1": true
+    "esbuild@0.28.1": true,
+    "@google/genai": false,
+    "electron-winstaller": false,
+    "protobufjs": false
   }
 }
