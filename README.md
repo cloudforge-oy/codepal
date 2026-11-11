@@ -164,7 +164,35 @@ packaged app needs no tsx/esbuild, whose native binaries are platform-specific) 
 renderer is bundled. Monaco is bundled into `app/renderer/dist`, so `monaco-editor` is a
 devDependency and its ~100 MB of sources stay out of the package.
 
+### Signed Windows builds
+
+Windows Smart App Control blocks unsigned apps outright, so release builds are made by
+`.github/workflows/windows.yml` (run it manually, or push a `v*` tag) and signed through
+SignPath: first every `.exe`/`.dll`/`.node` of the app, then the installer compiled from
+those signed files. The SignPath artifact configurations are in `build/signpath/`. Without
+the `SIGNPATH_*` repository settings the workflow still builds, unsigned. A locally built
+`npm run dist:win` is always unsigned.
+
+Known gap: `Uninstall.exe` is written by the installer at install time and is not signed.
+
 The Windows installer (NSIS, built without wine) and the macOS DMGs (ad-hoc signed,
 built in Docker on Linux) work exactly as in Harness — see `scripts/build-win-installer.mjs`
 and `scripts/build-mac-dmg.mjs`. Like Harness, packages exclude the
 `@anthropic-ai/claude-agent-sdk-*` / `@openai/codex-*` native CLIs if anything pulls them in.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [CloudForge Oy](https://github.com/cloudforge-oy)
+- Approvers: [Tatu Helander](https://github.com/cloudforge-oy)
+- Only binaries built by GitHub Actions from this repository are signed.
+
+Privacy: CodePal sends nothing anywhere unless you ask it to. Your prompts, and the files
+the agent reads, go to the cloudcode.one gateway you connect it to; pi's telemetry is off
+by default (see *pi specifics*).
+
+## License
+
+[MIT](LICENSE) © CloudForge Oy

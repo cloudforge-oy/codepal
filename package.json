@@ -5,6 +5,8 @@
   "description": "Coding agent desktop app: the pi agent (pi.dev) with a Monaco editor, talking to the cloudcode.one gateway.",
   "author": "CloudForge Oy <hello@cloudcode.one>",
   "homepage": "https://cloudcode.one",
+  "license": "MIT",
+  "repository": "github:cloudforge-oy/codepal",
   "type": "module",
   "main": "app/main.mjs",
   "desktopName": "codepal.desktop",
