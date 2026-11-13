@@ -19,6 +19,7 @@
     "build": "npm run build:agent && npm run build:renderer",
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux deb",
+    "dist:store": "npm run build && electron-builder --win appx",
     "dist:win": "npm run build && electron-builder --win zip && node scripts/build-win-installer.mjs",
     "dist:mac": "npm run build && electron-builder --mac dir --x64 --arm64 && node scripts/build-mac-dmg.mjs"
   },
@@ -82,6 +83,17 @@
         "zip"
       ],
       "icon": "build/icon.png"
+    },
+    "appx": {
+      "applicationId": "CodePal",
+      "displayName": "CodePal",
+      "publisherDisplayName": "Tatu Helander",
+      "identityName": "TatuHelander.CodePal",
+      "publisher": "CN=PLACEHOLDER-SET-FROM-PARTNER-CENTER",
+      "languages": [
+        "en-US"
+      ],
+      "backgroundColor": "transparent"
     },
     "mac": {
       "target": [

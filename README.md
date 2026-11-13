@@ -24,6 +24,33 @@ id, data folder and stored key).
 - `scripts/build-renderer.mjs` — bundles the UI with Monaco (ESM) and its web workers
 - `scripts/build-agent.mjs` — precompiles `codepal-agent.ts` for packaging
 
+## Install on Windows
+
+The Windows installer is **not code-signed**, so Windows warns about it:
+
+- **SmartScreen** ("Windows protected your PC"): click *More info*, then *Run anyway*.
+- **Smart App Control** ("...blocked an app that may be unsafe"): there is no *Run anyway*.
+  Smart App Control is on mostly on freshly installed Windows 11 PCs
+  (Windows Security > App & browser control > Smart App Control). If it is on, either:
+  - install CodePal from the Microsoft Store (in preparation; Store apps are signed by
+    Microsoft), or
+  - run the Linux build under WSL, which Smart App Control does not affect:
+
+    ```powershell
+    wsl --install -d Ubuntu      # once, then restart Windows
+    ```
+    ```bash
+    # inside Ubuntu: download codepal_<version>_amd64.deb from the Releases page, then
+    sudo apt install ./codepal_*_amd64.deb
+    codepal
+    ```
+
+    The window opens on the Windows desktop (WSLg). Your Windows drives are under
+    `/mnt/c/...`; projects kept inside the Linux filesystem are faster.
+
+Turning Smart App Control off also works, but on many Windows versions it cannot be turned
+back on without resetting Windows, so that is your call, not something we recommend.
+
 ## Run
 
 ```bash
@@ -164,34 +191,28 @@ packaged app needs no tsx/esbuild, whose native binaries are platform-specific) 
 renderer is bundled. Monaco is bundled into `app/renderer/dist`, so `monaco-editor` is a
 devDependency and its ~100 MB of sources stay out of the package.
 
-### Signed Windows builds
+### Windows builds and the Microsoft Store
 
-Windows Smart App Control blocks unsigned apps outright, so release builds are made by
-`.github/workflows/windows.yml` (run it manually, or push a `v*` tag) and signed through
-SignPath: first every `.exe`/`.dll`/`.node` of the app, then the installer compiled from
-those signed files. The SignPath artifact configurations are in `build/signpath/`. Without
-the `SIGNPATH_*` repository settings the workflow still builds, unsigned. A locally built
-`npm run dist:win` is always unsigned.
+`.github/workflows/windows.yml` (run it manually, or on a `v*` tag) builds two things:
 
-Known gap: `Uninstall.exe` is written by the installer at install time and is not signed.
+- the NSIS installer and the portable zip, **unsigned** (same as `npm run dist:win`);
+- an MSIX package for the Microsoft Store (`npm run dist:store`, Windows only). The Store
+  signs the package itself, so no code-signing certificate is needed. The package
+  identity comes from Partner Center and is passed in through the `APPX_IDENTITY_NAME`
+  and `APPX_PUBLISHER` repository variables; the values in `package.json` are
+  placeholders. Tile images live in `build/appx/` (regenerate with
+  `npx electron scripts/build-appx-assets.mjs`).
 
 The Windows installer (NSIS, built without wine) and the macOS DMGs (ad-hoc signed,
 built in Docker on Linux) work exactly as in Harness — see `scripts/build-win-installer.mjs`
 and `scripts/build-mac-dmg.mjs`. Like Harness, packages exclude the
 `@anthropic-ai/claude-agent-sdk-*` / `@openai/codex-*` native CLIs if anything pulls them in.
 
-## Code signing policy
+## Privacy
 
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by
-[SignPath Foundation](https://signpath.org).
-
-- Committers and reviewers: [CloudForge Oy](https://github.com/cloudforge-oy)
-- Approvers: [Tatu Helander](https://github.com/cloudforge-oy)
-- Only binaries built by GitHub Actions from this repository are signed.
-
-Privacy: CodePal sends nothing anywhere unless you ask it to. Your prompts, and the files
-the agent reads, go to the cloudcode.one gateway you connect it to; pi's telemetry is off
-by default (see *pi specifics*).
+CodePal sends nothing anywhere unless you ask it to. Your prompts, and the files the agent
+reads, go to the cloudcode.one gateway you connect it to; pi's telemetry is off by default
+(see *pi specifics*).
 
 ## License
 
