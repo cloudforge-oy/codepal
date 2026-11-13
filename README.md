@@ -32,8 +32,9 @@ The Windows installer is **not code-signed**, so Windows warns about it:
 - **Smart App Control** ("...blocked an app that may be unsafe"): there is no *Run anyway*.
   Smart App Control is on mostly on freshly installed Windows 11 PCs
   (Windows Security > App & browser control > Smart App Control). If it is on, either:
-  - install CodePal from the Microsoft Store (in preparation; Store apps are signed by
-    Microsoft), or
+  - install CodePal from the
+    [Microsoft Store](https://apps.microsoft.com/detail/9P65BRV593VW) (Store apps are
+    signed by Microsoft), or
   - run the Linux build under WSL, which Smart App Control does not affect:
 
     ```powershell
