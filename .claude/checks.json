@@ -1,0 +1,9 @@
+{
+  "commands": [
+    "node --check app/main.mjs",
+    "node --check app/portal-auth.mjs",
+    "node --check app/preload.cjs",
+    "npm run build",
+    "npm run smoke"
+  ]
+}

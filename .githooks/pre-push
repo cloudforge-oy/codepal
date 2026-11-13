@@ -1,0 +1,32 @@
+#!/bin/sh
+# Blocks pushes to main unless the defined checks passed on exactly the commit being
+# pushed: a report in .claude/test-reports/ (written by `node .claude/hooks/run-checks.mjs`)
+# must say `head: <commit>`, `result: PASS` and `tree: clean`.
+# Install after cloning: point git's hooks path at .githooks (one-time git config).
+root=$(git rev-parse --show-toplevel)
+zero=0000000000000000000000000000000000000000
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = "refs/heads/main" ] || continue
+  if [ "$local_sha" = "$zero" ]; then
+    echo "pre-push: deleting main is blocked." >&2
+    exit 1
+  fi
+  passed=no
+  for f in "$root"/.claude/test-reports/*.txt; do
+    [ -f "$f" ] || continue
+    header=$(sed -n 1,6p "$f")
+    if printf '%s\n' "$header" | grep -qx "head: $local_sha" &&
+       printf '%s\n' "$header" | grep -qx "result: PASS" &&
+       printf '%s\n' "$header" | grep -qx "tree: clean"; then
+      passed=yes
+      break
+    fi
+  done
+  if [ "$passed" != yes ]; then
+    echo "pre-push: push to main blocked, no passing test report for $local_sha." >&2
+    echo "          Commit everything, run: node .claude/hooks/run-checks.mjs" >&2
+    echo "          and push again once it reports PASS on a clean tree." >&2
+    exit 1
+  fi
+done
+exit 0
