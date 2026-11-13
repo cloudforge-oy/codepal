@@ -198,9 +198,9 @@ devDependency and its ~100 MB of sources stay out of the package.
 - the NSIS installer and the portable zip, **unsigned** (same as `npm run dist:win`);
 - an MSIX package for the Microsoft Store (`npm run dist:store`, Windows only). The Store
   signs the package itself, so no code-signing certificate is needed. The package
-  identity comes from Partner Center and is passed in through the `APPX_IDENTITY_NAME`
-  and `APPX_PUBLISHER` repository variables; the values in `package.json` are
-  placeholders. Tile images live in `build/appx/` (regenerate with
+  identity in `package.json` (`build.appx`) is the one Partner Center assigned to
+  CloudForge Oy's "CodePal" (Store ID `9P65BRV593VW`); the `APPX_IDENTITY_NAME` and
+  `APPX_PUBLISHER` repository variables can override it. Tile images live in `build/appx/` (regenerate with
   `npx electron scripts/build-appx-assets.mjs`).
 
 The Windows installer (NSIS, built without wine) and the macOS DMGs (ad-hoc signed,

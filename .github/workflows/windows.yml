@@ -3,12 +3,8 @@
 #   installer  NSIS installer + portable zip (unsigned; cross-built on Linux)
 #   store      MSIX package for the Microsoft Store (built on Windows; the Store signs it)
 #
-# The Store package needs the identity Partner Center assigns when the app name is
-# reserved (Product identity page). Set them as repository variables:
-#   APPX_IDENTITY_NAME   Package/Identity/Name       e.g. 12345TatuHelander.CodePal
-#   APPX_PUBLISHER       Package/Identity/Publisher  e.g. CN=01234567-89AB-CDEF-0123-456789ABCDEF
-# Without them the store job still builds, with placeholder identity, to prove the
-# packaging works; that package cannot be submitted.
+# The Store package identity (assigned by Partner Center) is in package.json, build.appx.
+# The repository variables APPX_IDENTITY_NAME and APPX_PUBLISHER override it when both are set.
 name: Windows build
 
 on:
@@ -62,8 +58,6 @@ jobs:
           args=()
           if [ -n "$APPX_IDENTITY_NAME" ] && [ -n "$APPX_PUBLISHER" ]; then
             args+=("-c.appx.identityName=$APPX_IDENTITY_NAME" "-c.appx.publisher=$APPX_PUBLISHER")
-          else
-            echo "::warning::APPX_IDENTITY_NAME / APPX_PUBLISHER not set: building with placeholder identity (not submittable)"
           fi
           npx electron-builder --win appx "${args[@]}"
       - uses: actions/upload-artifact@v4

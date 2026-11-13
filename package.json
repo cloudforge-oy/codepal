@@ -87,9 +87,9 @@
     "appx": {
       "applicationId": "CodePal",
       "displayName": "CodePal",
-      "publisherDisplayName": "Tatu Helander",
-      "identityName": "TatuHelander.CodePal",
-      "publisher": "CN=PLACEHOLDER-SET-FROM-PARTNER-CENTER",
+      "publisherDisplayName": "CloudForge Oy",
+      "identityName": "CloudForgeOy.CodePal",
+      "publisher": "CN=40085A48-8327-41F3-9FEC-F253C43999A3",
       "languages": [
         "en-US"
       ],
