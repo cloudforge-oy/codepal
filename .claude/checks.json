@@ -5,6 +5,7 @@
     "node --check app/preload.cjs",
     "npm run build",
     "npm run smoke",
-    "npm run test:mcp"
+    "npm run test:mcp",
+    "npm run test:unit"
   ]
 }

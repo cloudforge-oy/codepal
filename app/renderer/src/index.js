@@ -3,9 +3,20 @@ import { createChat } from "./chat.js";
 import { createConnect } from "./connect.js";
 import { createEditor } from "./editor.js";
 import { createExplorer } from "./explorer.js";
+import { createMcpPanel } from "./mcp.js";
 import { $, tildify } from "./util.js";
 
 const api = window.codepal;
+
+// CodePal's mcp.json lives in the app's data folder, outside the workspace the file IPC is
+// confined to. The editor opens it under this path; reads/writes go to the MCP handlers.
+const MCP_CONFIG_TAB = "CodePal settings/mcp.json";
+const editorApi = {
+  ...api,
+  read: (p) => (p === MCP_CONFIG_TAB ? api.mcpConfigRead() : api.read(p)),
+  write: (p, c) => (p === MCP_CONFIG_TAB ? api.mcpConfigWrite(c) : api.write(p, c)),
+  stat: (p) => (p === MCP_CONFIG_TAB ? api.mcpConfigStat() : api.stat(p)),
+};
 
 const app = {
   root: "",
@@ -88,7 +99,7 @@ const explorer = createExplorer({
 });
 
 const editor = createEditor({
-  api,
+  api: editorApi,
   onContextChange: (ctx) => chat.setContext(ctx),
   onAskSelection: (ctx) => chat.askAbout(ctx),
   onStatus: ({ cursor, language }) => {
@@ -113,12 +124,24 @@ const chat = createChat({
   showChat,
 });
 
+const mcpPanel = createMcpPanel({
+  api,
+  getModel: () => $("model-select").value,
+  onEditConfig: () => editor.openFile(MCP_CONFIG_TAB).catch((err) => chat.addErrorLine(err.message)),
+  onNotice: (msg) => chat.addErrorLine(msg),
+});
+
 const connect = createConnect({
   api,
   onConnected: refreshBalance,
   onNotice: (msg) => chat.addSystemLine(msg),
   onClose: () => chat.focus(),
 });
+
+async function newConversation() {
+  await chat.reset();
+  mcpPanel.conversationReset();
+}
 
 // ---------------------------------------------------------------- workspace
 async function setWorkspace(dir) {
@@ -150,7 +173,8 @@ const COMMANDS = {
   "open-folder": () => openFolder(),
   "toggle-explorer": () => togglePane("noExplorer"),
   "toggle-chat": () => togglePane("noChat"),
-  "new-conversation": () => chat.reset(),
+  "new-conversation": () => newConversation(),
+  "mcp-servers": () => mcpPanel.open(),
 };
 const SHORTCUTS = { s: "save", w: "close-tab", o: "open-folder", b: "toggle-explorer", j: "toggle-chat", "shift+n": "new-conversation" };
 
@@ -169,7 +193,8 @@ window.addEventListener("focus", () => editor.revalidate());
 $("workspace-chip").addEventListener("click", openFolder);
 $("toggle-explorer").addEventListener("click", () => togglePane("noExplorer"));
 $("toggle-chat").addEventListener("click", () => togglePane("noChat"));
-$("new-session").addEventListener("click", () => chat.reset());
+$("new-session").addEventListener("click", () => newConversation());
+$("mcp-btn").addEventListener("click", () => mcpPanel.open());
 document.getElementById("theme-toggle").addEventListener("click", () => {
   const dark = document.documentElement.classList.toggle("dark");
   try { localStorage.setItem("codepal-theme", dark ? "dark" : "light"); } catch { /* ignore */ }

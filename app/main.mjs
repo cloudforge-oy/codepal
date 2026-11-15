@@ -17,6 +17,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import * as mcpConfig from "./mcp-config.mjs";
 import { cancelPortalAuth, fetchApiKeyFromPortal } from "./portal-auth.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -93,6 +94,7 @@ const APPEND_SYSTEM_PROMPT = [
 let win = null;
 let agentPromise = null;
 let sessionPromise = null;  // in-flight or ready CodepalSession
+let liveSession = null;     // the session once ready (for the MCP panel's status)
 let approvalSeq = 0;
 const pendingApprovals = new Map(); // id -> resolve({ approved, reason })
 
@@ -182,6 +184,7 @@ async function closeSession() {
   denyAllPending("Session closed");
   const p = sessionPromise;
   sessionPromise = null;
+  liveSession = null;
   if (!p) return;
   try {
     const s = await p;
@@ -227,7 +230,8 @@ function getSession(model) {
     });
   })();
   // A failed creation must not wedge every later send.
-  sessionPromise.catch(() => { sessionPromise = null; });
+  const p = sessionPromise;
+  p.then((s) => { if (sessionPromise === p) liveSession = s; }, () => { if (sessionPromise === p) sessionPromise = null; });
   return sessionPromise;
 }
 
@@ -328,6 +332,7 @@ function buildMenu() {
         cmd("Toggle Explorer", "CmdOrCtrl+B", "toggle-explorer"),
         cmd("Toggle Chat", "CmdOrCtrl+J", "toggle-chat"),
         cmd("New Conversation", "CmdOrCtrl+Shift+N", "new-conversation"),
+        cmd("MCP Servers…", undefined, "mcp-servers"),
         { type: "separator" },
         { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" },
         { type: "separator" },
@@ -383,8 +388,13 @@ function createWindow() {
   }
 
   // Headless UI check: CODEPAL_SCREENSHOT=/path.png captures the window and exits.
+  // CODEPAL_SCREENSHOT_JS runs in the page first (e.g. to open a dialog); the capture
+  // follows after CODEPAL_SCREENSHOT_DELAY ms.
   if (process.env.CODEPAL_SCREENSHOT) {
     win.webContents.once("did-finish-load", () => {
+      if (process.env.CODEPAL_SCREENSHOT_JS) {
+        setTimeout(() => win.webContents.executeJavaScript(process.env.CODEPAL_SCREENSHOT_JS).catch(() => {}), 800);
+      }
       setTimeout(async () => {
         const image = await win.webContents.capturePage();
         await fs.promises.writeFile(process.env.CODEPAL_SCREENSHOT, image.toPNG());
@@ -557,6 +567,65 @@ handle("session:set-model", async (_e, id) => {
   return { ok: true };
 });
 
+// ---------------------------------------------------------------- MCP servers
+// CodePal's own mcp.json (pi's MCP extension reads it when a conversation starts; see
+// codepal-agent.ts). The panel edits it and shows each server's status.
+const mcpConfigPath = () => path.join(agentDir(), "mcp.json");
+
+handle("mcp:status", () => {
+  const config = mcpConfig.readMcpConfig(mcpConfigPath());
+  const runtime = liveSession?.mcpStatus() ?? null;
+  return {
+    configPath: mcpConfigPath(),
+    configError: config.error ?? null,
+    configErrors: runtime?.configErrors ?? [],
+    sessionActive: Boolean(liveSession),
+    rows: mcpConfig.mergeStatus(config, runtime),
+    presets: mcpConfig.presets(workspaceRoot),
+  };
+});
+
+handle("mcp:form-input", (_e, name) => {
+  const { servers } = mcpConfig.readMcpConfig(mcpConfigPath());
+  if (!Object.hasOwn(servers, name)) throw new Error(`No server named "${name}".`);
+  return mcpConfig.toFormInput(name, servers[name]);
+});
+handle("mcp:save-server", (_e, input, previousName) => ({ name: mcpConfig.saveServer(mcpConfigPath(), input, previousName) }));
+handle("mcp:remove-server", (_e, name) => { mcpConfig.removeServer(mcpConfigPath(), name); return { ok: true }; });
+handle("mcp:set-enabled", (_e, name, enabled) => { mcpConfig.setServerEnabled(mcpConfigPath(), name, Boolean(enabled)); return { ok: true }; });
+
+// Raw mcp.json for the editor tab ("Edit mcp.json"). Created with an empty server list on
+// first open so the tab has a file to save to and to watch.
+handle("mcp:config-read", async () => {
+  const file = mcpConfigPath();
+  if (!fs.existsSync(file)) {
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    await fs.promises.writeFile(file, mcpConfig.EMPTY_CONFIG, "utf8");
+  }
+  const [content, st] = await Promise.all([fs.promises.readFile(file, "utf8"), fs.promises.stat(file)]);
+  return { content, mtimeMs: st.mtimeMs };
+});
+handle("mcp:config-write", async (_e, content) => {
+  const file = mcpConfigPath();
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
+  await fs.promises.writeFile(file, String(content), "utf8");
+  return { mtimeMs: (await fs.promises.stat(file)).mtimeMs };
+});
+handle("mcp:config-stat", async () => {
+  try {
+    const st = await fs.promises.stat(mcpConfigPath());
+    return { mtimeMs: st.mtimeMs, size: st.size };
+  } catch {
+    return null;
+  }
+});
+
+// Servers start with a conversation; "Connect now" starts one without sending a message.
+handle("mcp:connect", async (_e, model) => {
+  await getSession(model);
+  return { ok: true };
+});
+
 on("approval:respond", (_e, { id, approved, reason }) => {
   const resolve = pendingApprovals.get(id);
   if (!resolve) return;
@@ -646,6 +715,7 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   const p = sessionPromise;
   sessionPromise = null;
+  liveSession = null;
   p.then((s) => s.dispose()).catch(() => {}).finally(() => {
     quitReady = true;
     app.quit();

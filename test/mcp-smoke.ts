@@ -4,7 +4,8 @@
  * createCodepalSession — the same code path the app uses. No gateway key needed.
  *
  * Scenarios, each with a fresh agent dir, project folder and fake home:
- *   direct    "exposure": "direct" — the model calls mcp__echo__* tools itself
+ *   direct    "exposure": "direct" — the model calls mcp__echo__* tools itself; a second,
+ *             broken server (no such command) must show as failed in mcpStatus()
  *   codemode  pi's default exposure — the model runs a codemode script that calls them,
  *             and tries the built-in write tool from the script
  *   builtin   the model calls pi's write and bash directly (CodePal's original gate)
@@ -54,7 +55,7 @@ async function scenario(
   exposure: "direct" | undefined,
   script: AssistantMessage[],
   verify: (run: Run, c: typeof check) => void,
-  opts: { trustProject?: boolean } = {},
+  opts: { trustProject?: boolean; brokenServer?: boolean } = {},
 ) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "codepal-mcp-"));
   const agentDir = path.join(tmp, "agent");
@@ -62,7 +63,13 @@ async function scenario(
   const home = path.join(tmp, "home");
   const state = path.join(tmp, "state");
   fs.mkdirSync(state, { recursive: true });
-  writeJson(path.join(agentDir, "mcp.json"), { mcpServers: { echo: server(state, "echo", exposure ? { exposure } : {}) } });
+  writeJson(path.join(agentDir, "mcp.json"), {
+    mcpServers: {
+      echo: server(state, "echo", exposure ? { exposure } : {}),
+      // A command that does not exist: must show as failed in the status.
+      ...(opts.brokenServer ? { broken: { command: path.join(tmp, "no-such-mcp-server"), exposure: "direct" } } : {}),
+    },
+  });
   // Untrusted (default): this server must never start. Trusted: the project adds "proj"
   // and replaces the user's "echo" with its own definition.
   writeJson(path.join(cwd, ".pi", "mcp.json"), {
@@ -116,6 +123,21 @@ async function scenario(
         await sleep(100);
       }
       c("echo server connected, tools registered", names.includes("mcp__echo__echo") && names.includes("mcp__echo__peek"), names.join(", ") || "none");
+      if (opts.brokenServer) {
+        // pi reports startup problems once, after the connection attempts finish.
+        let status = session.mcpStatus();
+        for (let i = 0; i < 100 && !status.servers.some((x) => x.name === "broken"); i++) {
+          await sleep(100);
+          status = session.mcpStatus();
+        }
+        const echo = status.servers.find((x) => x.name === "echo");
+        const broken = status.servers.find((x) => x.name === "broken");
+        const tools = Object.fromEntries((echo?.tools ?? []).map((t) => [t.name, t.readOnly]));
+        c("status: echo connected with its tools and read-only flags", echo?.state === "connected" && tools.echo === false && tools.peek === true, JSON.stringify(echo));
+        c("status: broken server failed, with its error", broken?.state === "failed" && Boolean(broken.message), JSON.stringify(broken));
+        const notice = events.find((e): e is Extract<UiEvent, { type: "notice" }> => e.type === "notice" && e.message.includes("broken"));
+        c("chat notice names the server and points at the MCP panel, not /mcp", notice !== undefined && notice.message.includes("Open MCP servers") && !notice.message.includes("/mcp"), notice?.message);
+      }
 
       await session.send("Go.");
       let timer: NodeJS.Timeout | undefined;
@@ -181,7 +203,7 @@ await scenario("direct", "direct", [
   c("echo returned the server's result", ok?.text.includes("echo: hello") === true, ok?.text);
   c("peek returned its result", peek?.isError === false && peek.text.includes("peek ok"), peek?.text);
   c("denied echo ended as an error", run.ends.some((e) => e.toolName === "mcp__echo__echo" && e.isError));
-});
+}, { brokenServer: true });
 
 // 2. codemode (pi's default exposure): one script calls echo, a denied echo, peek, and
 // pi's write tool with content the test denies. Scripts receive an MCP tool's result as

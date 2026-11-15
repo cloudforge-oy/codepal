@@ -22,7 +22,8 @@
     "dist:store": "npm run build && electron-builder --win appx",
     "dist:win": "npm run build && electron-builder --win zip && node scripts/build-win-installer.mjs",
     "dist:mac": "npm run build && electron-builder --mac dir --x64 --arm64 && node scripts/build-mac-dmg.mjs",
-    "test:mcp": "tsx test/mcp-smoke.ts"
+    "test:mcp": "tsx test/mcp-smoke.ts",
+    "test:unit": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "1.5.0"

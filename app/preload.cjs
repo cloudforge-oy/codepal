@@ -36,4 +36,15 @@ contextBridge.exposeInMainWorld("codepal", {
   onApprovalCancelled: (cb) => subscribe("approval:cancelled", cb),
   onDemoUser: (cb) => subscribe("demo:user", cb),
   onMenu: (cb) => subscribe("menu:command", cb),
+
+  // MCP servers (CodePal's mcp.json + live status)
+  mcpStatus: () => ipcRenderer.invoke("mcp:status"),
+  mcpFormInput: (name) => ipcRenderer.invoke("mcp:form-input", name),
+  mcpSaveServer: (input, previousName) => ipcRenderer.invoke("mcp:save-server", input, previousName),
+  mcpRemoveServer: (name) => ipcRenderer.invoke("mcp:remove-server", name),
+  mcpSetEnabled: (name, enabled) => ipcRenderer.invoke("mcp:set-enabled", name, enabled),
+  mcpConfigRead: () => ipcRenderer.invoke("mcp:config-read"),
+  mcpConfigWrite: (content) => ipcRenderer.invoke("mcp:config-write", content),
+  mcpConfigStat: () => ipcRenderer.invoke("mcp:config-stat"),
+  mcpConnect: (model) => ipcRenderer.invoke("mcp:connect", model),
 });

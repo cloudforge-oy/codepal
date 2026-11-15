@@ -90,7 +90,8 @@ Same caveats as Harness for development shells:
 - `CODEPAL_DEMO=1` replays a canned agent run (thinking, a `write` approval, a diff);
   `CODEPAL_DEMO=auto` approves it by itself and really writes `hello.ts` into the folder.
 - `CODEPAL_SCREENSHOT=/tmp/shot.png` captures the window and quits
-  (`CODEPAL_SCREENSHOT_DELAY` ms, default 2500); `CODEPAL_THEME=dark|light` forces a theme.
+  (`CODEPAL_SCREENSHOT_DELAY` ms, default 2500); `CODEPAL_THEME=dark|light` forces a theme;
+  `CODEPAL_SCREENSHOT_JS` runs a snippet in the page before the capture (e.g. open a dialog).
 - `node scripts/build-renderer.mjs --watch` rebuilds the UI on change (reload with
   View → Toggle Developer Tools → Ctrl+R in DevTools).
 
@@ -148,7 +149,13 @@ unsaved editor state.)
 ## MCP servers
 
 CodePal loads pi's built-in MCP client, so the agent can use tools from
-[MCP](https://modelcontextprotocol.io) servers. Servers are listed in CodePal's own
+[MCP](https://modelcontextprotocol.io) servers. **MCP servers** (the plug icon in the top
+bar, or the menu) lists them with their status — connected and their tools, failed and
+why, disabled, or waiting for a conversation — and adds, edits, disables and removes them.
+"Add server" has presets (Filesystem, Memory, Sequential thinking, Context7, GitHub; the
+local ones need Node.js for `npx`); servers added there use `"exposure": "direct"`, so each
+tool call shows as its own card. "Edit mcp.json" opens the file in the editor for anything
+the form does not cover. Servers are listed in CodePal's own
 `<userData>/pi-agent/mcp.json` (Linux: `~/.config/CodePal/pi-agent/mcp.json`; not the pi
 CLI's `~/.pi/agent`) and, in trusted folders, in the project's `.pi/mcp.json`:
 
@@ -202,6 +209,7 @@ npm run smoke                        # without a token: expects the gateway's 40
 CLOUDCODE_TOKEN=sk-... npm run smoke # live: write + read a file through approvals
 npm run smoke -- --model glm-5.3
 npm run test:mcp                     # MCP: real stdio server + scripted model, no token
+npm run test:unit                    # mcp.json handling behind the MCP panel
 ```
 
 The live run checks streaming, the approval gate, the before/after snapshot on `write`,

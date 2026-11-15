@@ -407,12 +407,51 @@ function toImage(dataUrl: string) {
   return m ? { type: "image" as const, mimeType: m[1], data: m[2] } : { type: "image" as const, mimeType: "image/png", data: dataUrl };
 }
 
+// ===========================================================================
+// MCP server status (for the MCP panel)
+// ===========================================================================
+/** One MCP server as this session sees it. Servers without an entry here are still
+ *  connecting (or disabled — the panel knows that from mcp.json). */
+export interface McpServerRuntime {
+  name: string;
+  state: "connected" | "failed" | "needs-auth";
+  /** First line of the error for "failed". */
+  message?: string;
+  /** Tool names as the server calls them (without the mcp__<server>__ prefix). */
+  tools: { name: string; readOnly: boolean; description: string }[];
+}
+
+const MCP_ATTENTION = "MCP servers need attention:";
+
+/** pi's MCP extension reports startup problems once, as one notice:
+ *    MCP servers need attention:
+ *      <server>: needs sign-in
+ *      <server>: failed: <first line of the error>
+ *      config: <path>: <parse error>
+ *    Run /mcp to fix.
+ *  (describeState() in pi's extensions/mcp/index.js, pi 1.5.0.) */
+export function parseMcpAttention(message: string) {
+  const problems = new Map<string, { state: "failed" | "needs-auth"; message?: string }>();
+  const configErrors: string[] = [];
+  if (!message.startsWith(MCP_ATTENTION)) return { problems, configErrors };
+  for (const line of message.split("\n").slice(1)) {
+    const m = /^ {2}(.+?): (needs sign-in|failed(?:: (.*))?)$/.exec(line);
+    if (m) problems.set(m[1], m[2] === "needs sign-in" ? { state: "needs-auth" } : { state: "failed", message: m[3] });
+    else if (line.startsWith("  config: ")) configErrors.push(line.slice("  config: ".length));
+  }
+  return { problems, configErrors };
+}
+
 /** pi's ExtensionUIContext for a host without pi's terminal UI. Notifications go to the
  *  chat as notices; dialogs (MCP OAuth sign-in, "authorize now?") are declined, since
  *  CodePal does not support those yet. Everything else is a TUI affordance and a no-op. */
-function codepalUiContext(onEvent: (event: UiEvent) => void): ExtensionUIContext {
+function codepalUiContext(onEvent: (event: UiEvent) => void, onNotify: (message: string) => void): ExtensionUIContext {
   const handlers: Partial<ExtensionUIContext> = {
-    notify: (message: string) => onEvent({ type: "notice", message }),
+    notify: (message: string) => {
+      onNotify(message);
+      // pi's notices point at its /mcp command, which CodePal has no terminal for.
+      onEvent({ type: "notice", message: message.replace(/\nRun \/mcp to fix\.$/, "\nOpen MCP servers (plug icon in the top bar) for details.") });
+    },
     select: async () => undefined,
     confirm: async () => false,
     input: async () => undefined,
@@ -501,11 +540,19 @@ export async function createCodepalSession(args: CreateSessionArgs) {
     session.dispose();
   };
 
+  const mcpProblems = new Map<string, { state: "failed" | "needs-auth"; message?: string }>();
+  const mcpConfigErrors: string[] = [];
+  const onNotify = (message: string) => {
+    const { problems, configErrors } = parseMcpAttention(message);
+    for (const [name, p] of problems) mcpProblems.set(name, p);
+    mcpConfigErrors.push(...configErrors);
+  };
+
   // Emits session_start to extensions: the MCP extension connects its servers then.
   try {
     await session.bindExtensions({
       mode: "rpc",
-      uiContext: codepalUiContext(args.onEvent),
+      uiContext: codepalUiContext(args.onEvent, onNotify),
       onError: (err) => args.onEvent({ type: "notice", message: `Extension error: ${err.error}` }),
     });
   } catch (err) {
@@ -536,6 +583,28 @@ export async function createCodepalSession(args: CreateSessionArgs) {
     abort: () => session.abort(),
     setModel: (id: string) => session.setModel(findModel(id)),
     get busy() { return session.isStreaming; },
+
+    /** MCP servers this session knows about: connected ones (from the registered tools)
+     *  and those pi reported as failed or needing sign-in. */
+    mcpStatus(): { servers: McpServerRuntime[]; configErrors: string[] } {
+      const byServer = new Map<string, McpServerRuntime>();
+      for (const tool of session.getAllTools()) {
+        const ns = tool.namespace;
+        const server = ns?.aliases?.[0];
+        if (!ns || !server || !isMcpTool(tool.name)) continue;
+        const entry = byServer.get(server) ?? { name: server, state: "connected" as const, tools: [] };
+        entry.tools.push({
+          name: tool.name.startsWith(`${ns.name}__`) ? tool.name.slice(ns.name.length + 2) : tool.name,
+          readOnly: tool.annotations?.readOnlyHint === true,
+          description: (tool.description ?? "").split("\n")[0],
+        });
+        byServer.set(server, entry);
+      }
+      for (const [name, p] of mcpProblems) {
+        if (!byServer.has(name)) byServer.set(name, { name, state: p.state, message: p.message, tools: [] });
+      }
+      return { servers: [...byServer.values()], configErrors: [...mcpConfigErrors] };
+    },
 
     /** Stops the session and its extensions (MCP servers included). */
     dispose: shutdown,
