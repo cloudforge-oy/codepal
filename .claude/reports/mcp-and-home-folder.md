@@ -1,11 +1,12 @@
-# Report: home folder fallback + MCP engine (part 1 of the brief)
+# Report: home folder fallback, MCP engine and MCP panel
 
 Brief: `.claude/briefs/mcp-and-home-folder.md`. Branch `mcp-servers`, not pushed.
-Commits: `8206039` (start folder), `668ad6b` (MCP engine), `07e71a6` (fixes after review).
+Commits: `8206039` (start folder), `668ad6b` (MCP engine), `07e71a6` (fixes after review),
+`6ab058f` (readOnlyHint only for the user's own servers), `3b06931` (MCP panel),
+`6224137` (mcp.json tab kept out of chat context).
 
-Delivered so far: the start-folder fallback and the MCP engine with approval. Not yet
-built: the MCP panel, add-server form, Edit mcp.json, presets, resources/prompts, the
-"needs sign-in" status, the 0.2.0 Store release.
+Delivered: everything in the brief except the 0.2.0 Store release (needs the user's go,
+since it publishes). Resources/prompts browsing was dropped by decision.
 
 ## Tests
 
@@ -20,6 +21,17 @@ Also passes under Electron's Node (24.22.1, Electron 43.8.7).
 
 Start folder: checked by launching the real app with a throwaway config (no saved folder
 -> home; saved folder -> reopened; saved folder removed -> home). Not automated.
+
+## Part 2: the MCP panel (after the review)
+
+`npm run test:unit` (11 tests of app/mcp-config.mjs: validation, atomic edits, a file
+with a syntax error is never overwritten, status merge, presets) and `npm run test:mcp`
+now 40 checks (adds mcpStatus with a connected and a broken server, and the chat notice
+pointing at the panel). Checked in the real app with screenshots (light and dark): status
+rows (connected with tools, failed with error, disabled), the form with presets and a
+validation error, a preset saved through the UI (written with exposure direct), Edit
+mcp.json as an editor tab. Not checked: the approval card rendering MCP inputs in the
+renderer (needs a live model), anything on Windows.
 
 ## Independent review (reviewer subagent, at 668ad6b)
 
@@ -42,13 +54,17 @@ approval card never tested with MCP inputs, no type check in the project.
    (a `pi` CLI run from the agent would use CodePal's dir). Kept: config/OAuth/log paths
    in pi all depend on it and the loader functions are not exported.
 4. Codemode loaded, pi's default exposure kept. Skeptic: approval cards for calls from a
-   script show without a visible link to the script; force "direct" instead. Open.
+   script show without a visible link to the script; force "direct" instead. Decided: see 11.
 5. readOnlyHint trusted as the server declares (user's rule). Skeptic's top risk: a
-   server can mislabel a writing tool. Open.
+   server can mislabel a writing tool. Decided: see 10.
 6. UI context: notices to chat, dialogs declined. Verified mode "rpc" only skips TUI paths.
 7. dispose(): capped 5 s, used on every exit path, quit waits for it.
 8. Test-only `provider` option on createCodepalSession; pi-ai 1.5.0 devDependency.
-9. Panel status source: open (pi exposes no structured status).
+9. Panel status: from pi's registered tools + pi's startup "need attention" notice +
+   mcp.json (user's choice "status + tools only"). Parsing that notice is tied to pi
+   1.5.0's wording; pi is pinned exactly, and test:mcp fails if it changes.
+10. readOnlyHint trusted only for servers in CodePal's own mcp.json (user's choice).
+11. Form-added servers use direct exposure (user's choice).
 
 ## Exam
 
