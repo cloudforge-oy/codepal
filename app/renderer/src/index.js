@@ -100,8 +100,9 @@ const explorer = createExplorer({
 
 const editor = createEditor({
   api: editorApi,
-  onContextChange: (ctx) => chat.setContext(ctx),
-  onAskSelection: (ctx) => chat.askAbout(ctx),
+  // The mcp.json tab can hold API keys in headers/env: never offer it as chat context.
+  onContextChange: (ctx) => chat.setContext(ctx?.path === MCP_CONFIG_TAB ? null : ctx),
+  onAskSelection: (ctx) => { if (ctx?.path !== MCP_CONFIG_TAB) chat.askAbout(ctx); },
   onStatus: ({ cursor, language }) => {
     $("sb-cursor").textContent = cursor;
     $("sb-language").textContent = language;
