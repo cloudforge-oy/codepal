@@ -409,6 +409,9 @@ function codepalUiContext(onEvent: (event: UiEvent) => void): ExtensionUIContext
   }) as ExtensionUIContext;
 }
 
+/** How long dispose() waits for extensions (MCP servers) to shut down. */
+const SHUTDOWN_TIMEOUT_MS = 5_000;
+
 export async function createCodepalSession(args: CreateSessionArgs) {
   fs.mkdirSync(args.agentDir, { recursive: true });
   // pi's MCP extension reads mcp.json, keeps OAuth state and logs in getAgentDir(), which
@@ -458,6 +461,23 @@ export async function createCodepalSession(args: CreateSessionArgs) {
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     for (const ui of toUiEvents(event, snapshots)) args.onEvent(ui);
   });
+  /** session.dispose() does not emit session_shutdown, which is what lets extensions
+   *  clean up: the MCP extension closes its connections and stops stdio server processes.
+   *  Capped, so a server that never closes cannot hang a folder switch or quit. */
+  const shutdown = async () => {
+    unsubscribe();
+    try {
+      if (session.extensionRunner.hasHandlers("session_shutdown")) {
+        let timer: NodeJS.Timeout | undefined;
+        await Promise.race([
+          session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" }),
+          new Promise<void>((r) => { timer = setTimeout(r, SHUTDOWN_TIMEOUT_MS); }),
+        ]).finally(() => clearTimeout(timer));
+      }
+    } catch { /* an extension's cleanup failed; dispose regardless */ }
+    session.dispose();
+  };
+
   // Emits session_start to extensions: the MCP extension connects its servers then.
   try {
     await session.bindExtensions({
@@ -466,8 +486,7 @@ export async function createCodepalSession(args: CreateSessionArgs) {
       onError: (err) => args.onEvent({ type: "notice", message: `Extension error: ${err.error}` }),
     });
   } catch (err) {
-    unsubscribe();
-    session.dispose();
+    await shutdown(); // servers that already started must stop too
     throw err;
   }
 
@@ -495,18 +514,8 @@ export async function createCodepalSession(args: CreateSessionArgs) {
     setModel: (id: string) => session.setModel(findModel(id)),
     get busy() { return session.isStreaming; },
 
-    /** session_shutdown lets extensions clean up (the MCP extension closes its server
-     *  connections and stops stdio server processes); session.dispose() does not emit it. */
-    async dispose() {
-      unsubscribe();
-      try {
-        if (session.extensionRunner.hasHandlers("session_shutdown")) {
-          await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
-        }
-      } finally {
-        session.dispose();
-      }
-    },
+    /** Stops the session and its extensions (MCP servers included). */
+    dispose: shutdown,
   };
 }
 

@@ -636,8 +636,18 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => {
+// Quit waits (up to dispose()'s 5 s cap) for the session to stop its MCP servers: on
+// Windows, child processes outlive a parent that exits without closing them.
+let quitReady = false;
+app.on("before-quit", (event) => {
   denyAllPending("App quitting");
   cancelPortalAuth("App quitting");
-  sessionPromise?.then((s) => s.dispose()).catch(() => {});
+  if (quitReady || !sessionPromise) return;
+  event.preventDefault();
+  const p = sessionPromise;
+  sessionPromise = null;
+  p.then((s) => s.dispose()).catch(() => {}).finally(() => {
+    quitReady = true;
+    app.quit();
+  });
 });
