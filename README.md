@@ -145,6 +145,30 @@ The model can be switched mid-conversation.
 them, so Electron's default Ctrl+W = close window and Ctrl+R = reload can't throw away
 unsaved editor state.)
 
+## MCP servers
+
+CodePal loads pi's built-in MCP client, so the agent can use tools from
+[MCP](https://modelcontextprotocol.io) servers. Servers are listed in CodePal's own
+`<userData>/pi-agent/mcp.json` (Linux: `~/.config/CodePal/pi-agent/mcp.json`; not the pi
+CLI's `~/.pi/agent`) and, in trusted folders, in the project's `.pi/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] },
+    "docs": { "url": "https://example.com/mcp", "headers": { "Authorization": "Bearer ${DOCS_TOKEN}" } }
+  }
+}
+```
+
+Servers connect when a conversation starts. MCP tool calls ask first, like `bash`, `edit`
+and `write`, except tools the server marks read-only (`readOnlyHint`). By default pi
+reaches MCP tools through its `codemode` tool (scripts in a QuickJS sandbox); each tool a
+script calls still goes through the same approval. `"exposure": "direct"` declares a
+server's tools to the model directly instead. Servers that need an OAuth sign-in in the
+browser are not supported yet. Connection problems appear in the chat as notices; pi's
+MCP log is `<userData>/pi-agent/mcp.log`.
+
 ## pi specifics
 
 - **Config lives under the app**, not `~/.pi/agent`: `<userData>/pi-agent/` (Linux:
@@ -175,6 +199,7 @@ unsaved editor state.)
 npm run smoke                        # without a token: expects the gateway's 401
 CLOUDCODE_TOKEN=sk-... npm run smoke # live: write + read a file through approvals
 npm run smoke -- --model glm-5.3
+npm run test:mcp                     # MCP: real stdio server + scripted model, no token
 ```
 
 The live run checks streaming, the approval gate, the before/after snapshot on `write`,

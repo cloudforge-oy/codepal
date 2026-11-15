@@ -81,7 +81,7 @@ try {
   errors.push(String((err as Error).message ?? err));
   console.log(`  error: ${errors.at(-1)}`);
 } finally {
-  session.dispose();
+  await session.dispose();
 }
 
 const checks: [string, boolean][] = hasToken

@@ -24,6 +24,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   createAgentSession,
+  createCodemodeExtension,
+  createMcpExtension,
   DefaultResourceLoader,
   hasTrustRequiringProjectResources,
   ModelRuntime,
@@ -35,7 +37,9 @@ import type {
   AgentSession,
   AgentSessionEvent,
   ExtensionAPI,
+  ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
+import type { Provider } from "@earendil-works/pi-ai";
 
 // pi's install telemetry and provider attribution headers default to on. An embedding
 // app shouldn't report to pi.dev on its users' behalf; PI_TELEMETRY=1 re-enables it.
@@ -159,14 +163,26 @@ function readSnapshot(file: string): string | null {
   }
 }
 
+/** MCP tools are registered as `mcp__<server>__<tool>` (pi's mcpNamespace()). They ask
+ *  too, unless their server marks them read-only (MCP's readOnlyHint annotation). */
+export const isMcpTool = (name: string) => name.startsWith("mcp__");
+
 function approvalExtension(
   cwd: string,
   resolve: ApprovalResolver,
   snapshots: Map<string, { path: string; before: string | null }>,
 ) {
   return (pi: ExtensionAPI) => {
+    const needsApproval = (toolName: string) => {
+      if (GATED_TOOLS.has(toolName)) return true;
+      if (!isMcpTool(toolName)) return false;
+      const info = pi.getAllTools().find((tool) => tool.name === toolName);
+      return info?.annotations?.readOnlyHint !== true;
+    };
+    // Also runs for calls a tool makes through ctx.executeTool() (codemode scripts calling
+    // MCP tools): pi routes nested calls through the same tool_call hooks.
     pi.on("tool_call", async (event) => {
-      if (!GATED_TOOLS.has(event.toolName)) return undefined;
+      if (!needsApproval(event.toolName)) return undefined;
       const decision = await resolve({
         toolCallId: event.toolCallId,
         toolName: event.toolName,
@@ -342,6 +358,9 @@ export interface CreateSessionArgs {
    *  agent (.pi/extensions, .pi/mcp.json, .pi/settings.json, …) and no decision is saved.
    *  Omitted -> such folders stay untrusted. */
   onProjectTrustRequest?: (cwd: string) => Promise<{ trusted: boolean; remember: boolean }>;
+  /** Tests only: a pi Provider (e.g. pi-ai's fauxProvider with scripted replies) that
+   *  replaces the cloudcode.one gateway; `model` is then one of its model ids. */
+  provider?: Provider;
 }
 
 /** pi's SDK treats every project as trusted unless the host decides otherwise, which
@@ -365,12 +384,42 @@ function toImage(dataUrl: string) {
   return m ? { type: "image" as const, mimeType: m[1], data: m[2] } : { type: "image" as const, mimeType: "image/png", data: dataUrl };
 }
 
+/** pi's ExtensionUIContext for a host without pi's terminal UI. Notifications go to the
+ *  chat as notices; dialogs (MCP OAuth sign-in, "authorize now?") are declined, since
+ *  CodePal does not support those yet. Everything else is a TUI affordance and a no-op. */
+function codepalUiContext(onEvent: (event: UiEvent) => void): ExtensionUIContext {
+  const handlers: Partial<ExtensionUIContext> = {
+    notify: (message: string) => onEvent({ type: "notice", message }),
+    select: async () => undefined,
+    confirm: async () => false,
+    input: async () => undefined,
+  };
+  // theme: methods like fg(color, text) / bold(text) return the text unstyled.
+  const plainTheme = new Proxy({}, {
+    get: (_t, prop) => (typeof prop === "symbol" ? undefined : (...a: unknown[]) => a.findLast((x) => typeof x === "string") ?? ""),
+  });
+  return new Proxy(handlers, {
+    get: (target, prop) => {
+      if (prop in target) return target[prop as keyof ExtensionUIContext];
+      // Not a thenable, and inspectable: symbols and `then` stay undefined.
+      if (typeof prop === "symbol" || prop === "then") return undefined;
+      if (prop === "theme") return plainTheme;
+      return () => undefined;
+    },
+  }) as ExtensionUIContext;
+}
+
 export async function createCodepalSession(args: CreateSessionArgs) {
   fs.mkdirSync(args.agentDir, { recursive: true });
+  // pi's MCP extension reads mcp.json, keeps OAuth state and logs in getAgentDir(), which
+  // is ~/.pi/agent (the pi CLI's) unless this is set. CodePal keeps its own.
+  process.env.PI_CODING_AGENT_DIR = args.agentDir;
   const modelRuntime = await getModelRuntime(args.agentDir, args.models);
+  if (args.provider) modelRuntime.registerNativeProvider(args.provider);
+  const providerId = args.provider?.id ?? PROVIDER_ID;
   const findModel = (id: string) => {
-    const model = modelRuntime.getModel(PROVIDER_ID, id);
-    if (!model) throw new Error(`Unknown model "${id}" — not in the cloudcode.one catalog`);
+    const model = modelRuntime.getModel(providerId, id);
+    if (!model) throw new Error(`Unknown model "${id}" — not in the ${providerId} catalog`);
     return model;
   };
 
@@ -381,7 +430,14 @@ export async function createCodepalSession(args: CreateSessionArgs) {
     cwd: args.cwd,
     agentDir: args.agentDir,
     settingsManager,
-    extensionFactories: [approvalExtension(args.cwd, args.onApprovalRequest, snapshots)],
+    extensionFactories: [
+      approvalExtension(args.cwd, args.onApprovalRequest, snapshots),
+      // MCP servers from <agentDir>/mcp.json (+ .pi/mcp.json in trusted projects).
+      // codemode runs the scripts that reach MCP tools with the default "codemode"
+      // exposure, in a QuickJS sandbox; its tool calls pass the approval hook above.
+      createCodemodeExtension(),
+      createMcpExtension({ logPath: path.join(args.agentDir, "mcp.log") }),
+    ],
     appendSystemPromptOverride: (base: string[]) =>
       args.appendSystemPrompt ? [...base, args.appendSystemPrompt] : base,
   });
@@ -402,6 +458,18 @@ export async function createCodepalSession(args: CreateSessionArgs) {
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     for (const ui of toUiEvents(event, snapshots)) args.onEvent(ui);
   });
+  // Emits session_start to extensions: the MCP extension connects its servers then.
+  try {
+    await session.bindExtensions({
+      mode: "rpc",
+      uiContext: codepalUiContext(args.onEvent),
+      onError: (err) => args.onEvent({ type: "notice", message: `Extension error: ${err.error}` }),
+    });
+  } catch (err) {
+    unsubscribe();
+    session.dispose();
+    throw err;
+  }
 
   return {
     session: session as AgentSession,
@@ -427,9 +495,17 @@ export async function createCodepalSession(args: CreateSessionArgs) {
     setModel: (id: string) => session.setModel(findModel(id)),
     get busy() { return session.isStreaming; },
 
-    dispose() {
+    /** session_shutdown lets extensions clean up (the MCP extension closes its server
+     *  connections and stops stdio server processes); session.dispose() does not emit it. */
+    async dispose() {
       unsubscribe();
-      session.dispose();
+      try {
+        if (session.extensionRunner.hasHandlers("session_shutdown")) {
+          await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+        }
+      } finally {
+        session.dispose();
+      }
     },
   };
 }

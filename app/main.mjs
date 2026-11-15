@@ -186,7 +186,7 @@ async function closeSession() {
   try {
     const s = await p;
     await s.abort().catch(() => {});
-    s.dispose();
+    await s.dispose();
   } catch { /* creation failed — nothing to close */ }
 }
 
