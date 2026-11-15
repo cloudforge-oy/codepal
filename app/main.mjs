@@ -112,14 +112,16 @@ function writeState(patch) {
 const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
 
 /** `codepal <folder>` (packaged) / `electron . <folder>` (dev) opens that folder;
- *  otherwise the last workspace, otherwise the launch directory. */
+ *  otherwise the last workspace, otherwise the home folder. Not the launch directory:
+ *  launched from the Start menu, the Store or a desktop shortcut that is a system or
+ *  install folder (C:\Windows\System32, the WindowsApps package folder, "/"). */
 function initialWorkspace() {
   const args = process.argv.slice(app.isPackaged ? 1 : 2).filter((a) => !a.startsWith("-"));
   const fromArgs = args.map((a) => path.resolve(a)).find(isDir);
   if (fromArgs) return fromArgs;
   const last = readState().workspace;
   if (last && isDir(last)) return last;
-  return process.cwd();
+  return os.homedir();
 }
 
 let workspaceRoot = process.cwd();

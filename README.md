@@ -60,7 +60,8 @@ npm start                      # builds the renderer bundle, then launches
 npm start -- ~/src/my-project  # open a specific folder
 ```
 
-The app reopens the last folder; the folder chip in the top bar (or Ctrl+O) opens another.
+The app reopens the last folder, or starts in your home folder when there is none (or it
+was removed); the folder chip in the top bar (or Ctrl+O) opens another.
 
 Env: `CLOUDCODE_TOKEN` (otherwise the app offers the portal flow, as Harness did),
 `CLOUDCODE_BASE_URL` (default `https://api.cloudcode.one`; a trailing `/v1` is accepted
