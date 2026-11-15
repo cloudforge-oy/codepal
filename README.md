@@ -162,7 +162,9 @@ CLI's `~/.pi/agent`) and, in trusted folders, in the project's `.pi/mcp.json`:
 ```
 
 Servers connect when a conversation starts. MCP tool calls ask first, like `bash`, `edit`
-and `write`, except tools the server marks read-only (`readOnlyHint`). By default pi
+and `write`, except tools marked read-only (`readOnlyHint`) by a server from CodePal's own
+`mcp.json`. That mark is the server's own claim, so servers from a project's
+`.pi/mcp.json` (or a project's redefinition of one of yours) always ask. By default pi
 reaches MCP tools through its `codemode` tool (scripts in a QuickJS sandbox); each tool a
 script calls still goes through the same approval. `"exposure": "direct"` declares a
 server's tools to the model directly instead. Servers that need an OAuth sign-in in the

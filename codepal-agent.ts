@@ -164,20 +164,43 @@ function readSnapshot(file: string): string | null {
 }
 
 /** MCP tools are registered as `mcp__<server>__<tool>` (pi's mcpNamespace()). They ask
- *  too, unless their server marks them read-only (MCP's readOnlyHint annotation). */
+ *  too, unless one of the user's own servers marks them read-only (readOnlyHint). */
 export const isMcpTool = (name: string) => name.startsWith("mcp__");
+
+/** Server names in an mcp.json. With `definitionsOnly`, only entries that define a server
+ *  (command, url or type), not a project's override of a global server's settings. */
+function mcpServerNames(file: string, definitionsOnly = false): Set<string> {
+  try {
+    const servers = JSON.parse(fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "")).mcpServers ?? {};
+    return new Set(Object.entries(servers)
+      .filter(([, v]) => !definitionsOnly || (typeof v === "object" && v !== null && ("command" in v || "url" in v || "type" in v)))
+      .map(([name]) => name));
+  } catch {
+    return new Set();
+  }
+}
 
 function approvalExtension(
   cwd: string,
+  agentDir: string,
   resolve: ApprovalResolver,
   snapshots: Map<string, { path: string; before: string | null }>,
 ) {
   return (pi: ExtensionAPI) => {
+    /** The user's own servers: defined in CodePal's mcp.json and not replaced by the
+     *  project's .pi/mcp.json. Read at call time, so edits apply without a restart. */
+    const isOwnServer = (server: string) =>
+      mcpServerNames(path.join(agentDir, "mcp.json")).has(server) &&
+      !mcpServerNames(path.join(cwd, ".pi", "mcp.json"), true).has(server);
     const needsApproval = (toolName: string) => {
       if (GATED_TOOLS.has(toolName)) return true;
       if (!isMcpTool(toolName)) return false;
       const info = pi.getAllTools().find((tool) => tool.name === toolName);
-      return info?.annotations?.readOnlyHint !== true;
+      // readOnlyHint is the server's own claim: trusted only for the user's own servers.
+      // Servers from a project (or registered by an extension) always ask.
+      const server = info?.namespace?.aliases?.[0];
+      const trustedReadOnly = info?.annotations?.readOnlyHint === true && server !== undefined && isOwnServer(server);
+      return !trustedReadOnly;
     };
     // Also runs for calls a tool makes through ctx.executeTool() (codemode scripts calling
     // MCP tools): pi routes nested calls through the same tool_call hooks.
@@ -434,7 +457,7 @@ export async function createCodepalSession(args: CreateSessionArgs) {
     agentDir: args.agentDir,
     settingsManager,
     extensionFactories: [
-      approvalExtension(args.cwd, args.onApprovalRequest, snapshots),
+      approvalExtension(args.cwd, args.agentDir, args.onApprovalRequest, snapshots),
       // MCP servers from <agentDir>/mcp.json (+ .pi/mcp.json in trusted projects).
       // codemode runs the scripts that reach MCP tools with the default "codemode"
       // exposure, in a QuickJS sandbox; its tool calls pass the approval hook above.

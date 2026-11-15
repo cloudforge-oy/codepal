@@ -8,6 +8,8 @@
  *   codemode  pi's default exposure — the model runs a codemode script that calls them,
  *             and tries the built-in write tool from the script
  *   builtin   the model calls pi's write and bash directly (CodePal's original gate)
+ *   project   a trusted project's servers (and its redefinition of the user's server)
+ *             ask even for read-only tools
  * Every scenario also plants two servers that must never start: one in the project's
  * .pi/mcp.json (the folder is not trusted) and one in the fake home's ~/.pi/agent/mcp.json
  * (the pi CLI's config, which CodePal must not read). And dispose() must stop the server.
@@ -52,6 +54,7 @@ async function scenario(
   exposure: "direct" | undefined,
   script: AssistantMessage[],
   verify: (run: Run, c: typeof check) => void,
+  opts: { trustProject?: boolean } = {},
 ) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "codepal-mcp-"));
   const agentDir = path.join(tmp, "agent");
@@ -60,7 +63,13 @@ async function scenario(
   const state = path.join(tmp, "state");
   fs.mkdirSync(state, { recursive: true });
   writeJson(path.join(agentDir, "mcp.json"), { mcpServers: { echo: server(state, "echo", exposure ? { exposure } : {}) } });
-  writeJson(path.join(cwd, ".pi", "mcp.json"), { mcpServers: { proj: server(state, "proj", { exposure: "direct" }) } });
+  // Untrusted (default): this server must never start. Trusted: the project adds "proj"
+  // and replaces the user's "echo" with its own definition.
+  writeJson(path.join(cwd, ".pi", "mcp.json"), {
+    mcpServers: opts.trustProject
+      ? { proj: server(state, "proj", { exposure: "direct" }), echo: server(state, "echo", { exposure: "direct" }) }
+      : { proj: server(state, "proj", { exposure: "direct" }) },
+  });
   writeJson(path.join(home, ".pi", "agent", "mcp.json"), { mcpServers: { shadow: server(state, "shadow", { exposure: "direct" }) } });
   const realHome = process.env.HOME;
   process.env.HOME = home; // os.homedir() -> the fake home, as pi's getAgentDir() would see it
@@ -84,7 +93,8 @@ async function scenario(
         events.push(e);
         if (e.type === "settled") settled();
       },
-      // No onProjectTrustRequest: the project folder stays untrusted.
+      // Without onProjectTrustRequest the project folder stays untrusted.
+      ...(opts.trustProject ? { onProjectTrustRequest: async () => ({ trusted: true, remember: false }) } : {}),
       onApprovalRequest: async (req) => {
         const input = req.input as { text?: string; path?: string; command?: string; content?: string };
         approvals.push(`${req.toolName}:${input.text ?? input.path ?? input.command ?? ""}`);
@@ -99,7 +109,9 @@ async function scenario(
       let names: string[] = [];
       while (Date.now() < deadline) {
         names = session.session.getAllTools().map((t) => t.name).filter((n) => n.startsWith("mcp__"));
-        const ready = names.includes("mcp__echo__peek") && (exposure === "direct" || session.session.getActiveToolNames().includes("codemode"));
+        const ready = names.includes("mcp__echo__peek") &&
+          (!opts.trustProject || names.includes("mcp__proj__peek")) &&
+          (exposure === "direct" || session.session.getActiveToolNames().includes("codemode"));
         if (ready) break;
         await sleep(100);
       }
@@ -119,7 +131,9 @@ async function scenario(
       verify({ ends: events.filter((e): e is ToolEnd => e.type === "tool_end"), approvals, events, cwd, calls }, c);
       c("model got the final turn", events.some((e) => e.type === "text_end" && e.content.includes("done")));
       const all = session.session.getAllTools().map((t) => t.name);
-      c("untrusted project's .pi/mcp.json did not start", !all.some((n) => n.startsWith("mcp__proj")) && !fs.existsSync(path.join(state, "proj.pid")));
+      if (!opts.trustProject) {
+        c("untrusted project's .pi/mcp.json did not start", !all.some((n) => n.startsWith("mcp__proj")) && !fs.existsSync(path.join(state, "proj.pid")));
+      }
       c("pi CLI's ~/.pi/agent/mcp.json was not read", !all.some((n) => n.startsWith("mcp__shadow")) && !fs.existsSync(path.join(state, "shadow.pid")));
     } finally {
       await session.dispose();
@@ -205,6 +219,18 @@ await scenario("builtin", "direct", [
   c("denied bash asked, ended as an error, ran nothing",
     run.approvals.includes("bash:echo blocked > blocked.txt") && run.ends.some((e) => e.toolName === "bash" && e.isError) && !fs.existsSync(path.join(run.cwd, "blocked.txt")), run.approvals.join(" | "));
 });
+
+// 4. project: a trusted project's servers get no read-only exemption. "proj" exists only
+// in the project; "echo" is the user's server, redefined by the project.
+await scenario("project", "direct", [
+  fauxAssistantMessage(fauxToolCall("mcp__proj__peek", {}), { stopReason: "toolUse" }),
+  fauxAssistantMessage(fauxToolCall("mcp__echo__peek", {}), { stopReason: "toolUse" }),
+  fauxAssistantMessage(fauxText("done")),
+], (run, c) => {
+  c("project server's read-only tool asked", run.approvals.includes("mcp__proj__peek:"), run.approvals.join(" | "));
+  c("user's server redefined by the project asked", run.approvals.includes("mcp__echo__peek:"), run.approvals.join(" | "));
+  c("both calls returned their results", run.ends.filter((e) => e.text.includes("peek ok") && !e.isError).length === 2);
+}, { trustProject: true });
 
 for (const [name, ok, detail] of results) {
   console.log(`${ok ? "✓" : "✗"} ${name}${!ok && detail ? `\n    ${detail}` : ""}`);
