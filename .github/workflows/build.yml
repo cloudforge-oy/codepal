@@ -75,7 +75,7 @@ jobs:
           if [ -n "$APPX_IDENTITY_NAME" ] && [ -n "$APPX_PUBLISHER" ]; then
             args+=("-c.appx.identityName=$APPX_IDENTITY_NAME" "-c.appx.publisher=$APPX_PUBLISHER")
           fi
-          npx electron-builder --win appx "${args[@]}"
+          npx electron-builder --win appx --publish never "${args[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: windows-store-msix
