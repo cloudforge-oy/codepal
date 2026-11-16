@@ -1,0 +1,114 @@
+# Builds CodePal for Windows and Linux. Run manually, or by pushing a v* tag, which also
+# publishes a GitHub Release.
+#
+#   windows  NSIS installer + portable zip (unsigned; cross-built on Linux, no wine)
+#   linux    .deb for Ubuntu/Debian (amd64)
+#   store    MSIX package for the Microsoft Store (built on Windows; the Store signs it).
+#            Not attached to the release: it only installs through the Store.
+#   release  tag builds only: checks the tag matches package.json's version, then creates
+#            the release with the installer, zip and .deb. Notes come from
+#            .github/release-notes/<tag>.md when that file exists.
+#
+# The Store package identity (assigned by Partner Center) is in package.json, build.appx.
+# The repository variables APPX_IDENTITY_NAME and APPX_PUBLISHER override it when both are set.
+name: Build and release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y nsis
+      - run: npm ci
+      - run: npm run dist:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-unsigned
+          path: |
+            dist/CodePal-Setup-*.exe
+            dist/CodePal-*-win.zip
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run dist:linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: dist/codepal_*_amd64.deb
+
+  store:
+    runs-on: windows-latest   # MSIX packaging (makeappx) only exists on Windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Build MSIX
+        shell: bash
+        env:
+          APPX_IDENTITY_NAME: ${{ vars.APPX_IDENTITY_NAME }}
+          APPX_PUBLISHER: ${{ vars.APPX_PUBLISHER }}
+        run: |
+          args=()
+          if [ -n "$APPX_IDENTITY_NAME" ] && [ -n "$APPX_PUBLISHER" ]; then
+            args+=("-c.appx.identityName=$APPX_IDENTITY_NAME" "-c.appx.publisher=$APPX_PUBLISHER")
+          fi
+          npx electron-builder --win appx "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-store-msix
+          path: dist/*.appx
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+      # By name: the Store's MSIX (same run) must not end up in the release.
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-unsigned
+          path: assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-deb
+          path: assets
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=".github/release-notes/$GITHUB_REF_NAME.md"
+          if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
+          gh release create "$GITHUB_REF_NAME" assets/* --title "CodePal ${GITHUB_REF_NAME#v}" "$@"

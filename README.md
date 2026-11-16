@@ -24,6 +24,15 @@ id, data folder and stored key).
 - `scripts/build-renderer.mjs` — bundles the UI with Monaco (ESM) and its web workers
 - `scripts/build-agent.mjs` — precompiles `codepal-agent.ts` for packaging
 
+## Install on Linux
+
+Download `codepal_<version>_amd64.deb` from the
+[Releases page](https://github.com/cloudforge-oy/codepal/releases) and install it:
+
+```bash
+sudo apt install ./codepal_*_amd64.deb
+```
+
 ## Install on Windows
 
 The Windows installer is **not code-signed**, so Windows warns about it:
@@ -41,7 +50,8 @@ The Windows installer is **not code-signed**, so Windows warns about it:
     wsl --install -d Ubuntu      # once, then restart Windows
     ```
     ```bash
-    # inside Ubuntu: download codepal_<version>_amd64.deb from the Releases page, then
+    # inside Ubuntu: download codepal_<version>_amd64.deb from the Releases page
+    # (https://github.com/cloudforge-oy/codepal/releases), then
     sudo apt install ./codepal_*_amd64.deb
     codepal
     ```
@@ -228,10 +238,12 @@ packaged app needs no tsx/esbuild, whose native binaries are platform-specific) 
 renderer is bundled. Monaco is bundled into `app/renderer/dist`, so `monaco-editor` is a
 devDependency and its ~100 MB of sources stay out of the package.
 
-### Windows builds and the Microsoft Store
+### Builds and releases
 
-`.github/workflows/windows.yml` (run it manually, or on a `v*` tag) builds two things:
+`.github/workflows/build.yml` ("Build and release"; run it manually, or push a `v*` tag)
+builds:
 
+- the `.deb` for Ubuntu/Debian (same as `npm run dist:linux`);
 - the NSIS installer and the portable zip, **unsigned** (same as `npm run dist:win`);
 - an MSIX package for the Microsoft Store (`npm run dist:store`, Windows only). The Store
   signs the package itself, so no code-signing certificate is needed. The package
@@ -239,6 +251,10 @@ devDependency and its ~100 MB of sources stay out of the package.
   CloudForge Oy's "CodePal" (Store ID `9P65BRV593VW`); the `APPX_IDENTITY_NAME` and
   `APPX_PUBLISHER` repository variables can override it. Tile images live in `build/appx/` (regenerate with
   `npx electron scripts/build-appx-assets.mjs`).
+
+A tag build also publishes a GitHub Release with the `.deb`, the installer and the zip (not
+the MSIX, which installs only through the Store). The tag must match `package.json`'s
+version (`v0.2.0` for 0.2.0); release notes come from `.github/release-notes/<tag>.md`.
 
 The Windows installer (NSIS, built without wine) and the macOS DMGs (ad-hoc signed,
 built in Docker on Linux) work exactly as in Harness — see `scripts/build-win-installer.mjs`
