@@ -1,7 +1,7 @@
 {
   "name": "codepal",
   "productName": "CodePal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Coding agent desktop app: the pi agent (pi.dev) with a Monaco editor, talking to the cloudcode.one gateway.",
   "author": "CloudForge Oy <hello@cloudcode.one>",
   "homepage": "https://cloudcode.one",
