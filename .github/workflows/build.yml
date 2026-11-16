@@ -109,6 +109,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Every file under assets/, whatever folders the download made; expect the
+          # installer, the zip and the .deb.
+          mapfile -t files < <(find assets -type f | sort)
+          printf 'asset: %s\n' "${files[@]}"
+          if [ "${#files[@]}" -lt 3 ]; then echo "::error::expected 3 release files, found ${#files[@]}"; exit 1; fi
           notes=".github/release-notes/$GITHUB_REF_NAME.md"
           if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
-          gh release create "$GITHUB_REF_NAME" assets/* --title "CodePal ${GITHUB_REF_NAME#v}" "$@"
+          gh release create "$GITHUB_REF_NAME" "${files[@]}" --title "CodePal ${GITHUB_REF_NAME#v}" "$@"
